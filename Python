@@ -1,0 +1,146 @@
+import numpy as np
+from typing import List, Dict, Any
+
+def delphi_randucla_consensus(
+    ratings: List[int],
+    high_band=(7, 8, 9),
+    low_band=(1, 2, 3),
+    midpoint: float = 5.0,
+) -> Dict[str, Any]:
+    """
+    Determine Delphi consensus on a 9-point importance scale
+    using a RAND/UCLA-style approach (median + IPRAS).
+
+    Parameters
+    ----------
+    ratings : list of int
+        Panel ratings, each between 1 and 9 inclusive.
+    high_band : tuple
+        Values treated as "high importance" (default 7–9).
+    low_band : tuple
+        Values treated as "low importance" (default 1–3).
+    midpoint : float
+        Midpoint of the scale (5 on a 1–9 scale).
+
+    Returns
+    -------
+    dict with keys:
+        median : float
+        p30, p70 : float
+        ipr : float
+        ipras : float
+        disagreement_index : float
+        disagreement : bool
+        pct_high : float
+        pct_low : float
+        classification : str  # 'high_consensus', 'low_consensus', 'uncertain'
+    """
+
+    arr = np.array(ratings, dtype=float)
+    if arr.size == 0:
+        raise ValueError("ratings must not be empty")
+
+    # Basic descriptive stats
+    median = float(np.median(arr))
+    p30, p70 = np.percentile(arr, [30, 70])
+    ipr = float(p70 - p30)
+    iprcp = float((p70 + p30) / 2.0)
+
+    # Asymmetry Index (distance from mid-point)
+    ai = abs(midpoint - iprcp)
+
+    # IPRAS formula from RAND/UCLA
+    ipras = 2.35 + 1.5 * ai
+
+    disagreement_index = ipr / ipras if ipras > 0 else np.nan
+    disagreement = bool(disagreement_index > 1.0)
+
+    # Percentages in bands
+    n = arr.size
+    pct_high = float(np.mean(np.isin(arr, high_band))) * 100.0
+    pct_low = float(np.mean(np.isin(arr, low_band))) * 100.0
+
+    # Handle boundary medians (3.5 and 6.5) as recommended by RAM:
+    # 3.5 -> move up to 4–6 band, 6.5 -> move up to 7–9 band.
+    if median == 3.5:
+        median_band = "mid"
+    elif median == 6.5:
+        median_band = "high"
+    elif median <= 3:
+        median_band = "low"
+    elif median >= 7:
+        median_band = "high"
+    else:
+        median_band = "mid"
+
+    # Classification (RAM-style)
+    if (median_band == "high") and not disagreement:
+        classification = "high_importance_consensus"
+    elif (median_band == "low") and not disagreement:
+        classification = "low_importance_consensus"
+    else:
+        classification = "uncertain_or_no_consensus"
+
+    return {
+        "median": median,
+        "p30": float(p30),
+        "p70": float(p70),
+        "ipr": ipr,
+        "ipras": ipras,
+        "disagreement_index": disagreement_index,
+        "disagreement": disagreement,
+        "pct_high": pct_high,
+        "pct_low": pct_low,
+        "median_band": median_band,
+        "classification": classification,
+    }
+
+
+def delphi_iqr_percent_consensus(
+    ratings: List[int],
+    high_threshold: int = 7,
+    low_threshold: int = 3,
+    pct_cutoff: float = 75.0,
+    iqr_cutoff: float = 1.0,
+) -> Dict[str, Any]:
+    """
+    Simpler consensus function using median + IQR + percent agreement.
+
+    High-importance consensus:
+        median >= high_threshold AND
+        IQR <= iqr_cutoff AND
+        pct ratings >= high_threshold >= pct_cutoff
+
+    Low-importance consensus:
+        median <= low_threshold AND
+        IQR <= iqr_cutoff AND
+        pct ratings <= low_threshold >= pct_cutoff
+    """
+
+    arr = np.array(ratings, dtype=float)
+    if arr.size == 0:
+        raise ValueError("ratings must not be empty")
+
+    median = float(np.median(arr))
+    q1, q3 = np.percentile(arr, [25, 75])
+    iqr = float(q3 - q1)
+
+    pct_high = float(np.mean(arr >= high_threshold)) * 100.0
+    pct_low = float(np.mean(arr <= low_threshold)) * 100.0
+
+    if (median >= high_threshold) and (iqr <= iqr_cutoff) and (pct_high >= pct_cutoff):
+        classification = "high_importance_consensus"
+    elif (median <= low_threshold) and (iqr <= iqr_cutoff) and (pct_low >= pct_cutoff):
+        classification = "low_importance_consensus"
+    else:
+        classification = "uncertain_or_no_consensus"
+
+    return {
+        "median": median,
+        "q1": float(q1),
+        "q3": float(q3),
+        "iqr": iqr,
+        "pct_high": pct_high,
+        "pct_low": pct_low,
+        "classification": classification,
+    }
