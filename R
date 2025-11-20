@@ -1,0 +1,103 @@
+delphi_randucla_consensus <- function(
+  ratings,
+  high_band = c(7, 8, 9),
+  low_band  = c(1, 2, 3),
+  midpoint  = 5
+) {
+  if (length(ratings) == 0L) {
+    stop("ratings must not be empty")
+  }
+  ratings <- as.numeric(ratings)
+
+  # Basic stats
+  med <- stats::median(ratings, na.rm = TRUE)
+  p30 <- stats::quantile(ratings, probs = 0.30, na.rm = TRUE, type = 7)
+  p70 <- stats::quantile(ratings, probs = 0.70, na.rm = TRUE, type = 7)
+  ipr <- as.numeric(p70 - p30)
+  iprcp <- as.numeric((p70 + p30) / 2)
+
+  # Asymmetry index and IPRAS
+  ai <- abs(midpoint - iprcp)
+  ipras <- 2.35 + 1.5 * ai
+
+  di <- if (ipras > 0) ipr / ipras else NA_real_
+  disagreement <- isTRUE(di > 1)
+
+  # Percentages
+  pct_high <- mean(ratings %in% high_band) * 100
+  pct_low  <- mean(ratings %in% low_band) * 100
+
+  # Median band with RAM boundary rules
+  if (med == 3.5) {
+    median_band <- "mid"
+  } else if (med == 6.5) {
+    median_band <- "high"
+  } else if (med <= 3) {
+    median_band <- "low"
+  } else if (med >= 7) {
+    median_band <- "high"
+  } else {
+    median_band <- "mid"
+  }
+
+  if (median_band == "high" && !disagreement) {
+    classification <- "high_importance_consensus"
+  } else if (median_band == "low" && !disagreement) {
+    classification <- "low_importance_consensus"
+  } else {
+    classification <- "uncertain_or_no_consensus"
+  }
+
+  list(
+    median = med,
+    p30 = as.numeric(p30),
+    p70 = as.numeric(p70),
+    ipr = ipr,
+    ipras = ipras,
+    disagreement_index = di,
+    disagreement = disagreement,
+    pct_high = pct_high,
+    pct_low = pct_low,
+    median_band = median_band,
+    classification = classification
+  )
+}
+
+
+delphi_iqr_percent_consensus <- function(
+  ratings,
+  high_threshold = 7,
+  low_threshold  = 3,
+  pct_cutoff     = 75,
+  iqr_cutoff     = 1
+) {
+  if (length(ratings) == 0L) {
+    stop("ratings must not be empty")
+  }
+  ratings <- as.numeric(ratings)
+
+  med <- stats::median(ratings, na.rm = TRUE)
+  qs  <- stats::quantile(ratings, probs = c(0.25, 0.75), na.rm = TRUE, type = 7)
+  iqr <- as.numeric(qs[2] - qs[1])
+
+  pct_high <- mean(ratings >= high_threshold) * 100
+  pct_low  <- mean(ratings <= low_threshold)  * 100
+
+  if (med >= high_threshold && iqr <= iqr_cutoff && pct_high >= pct_cutoff) {
+    classification <- "high_importance_consensus"
+  } else if (med <= low_threshold && iqr <= iqr_cutoff && pct_low >= pct_cutoff) {
+    classification <- "low_importance_consensus"
+  } else {
+    classification <- "uncertain_or_no_consensus"
+  }
+
+  list(
+    median = med,
+    q1 = as.numeric(qs[1]),
+    q3 = as.numeric(qs[2]),
+    iqr = iqr,
+    pct_high = pct_high,
+    pct_low = pct_low,
+    classification = classification
+  )
+}
